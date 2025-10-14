@@ -1,42 +1,50 @@
 name: Convert Wiki to PDF
 
 on:
-  workflow_dispatch: # 수동 실행
-  push:
-    branches: [ main ]
+  workflow_dispatch:  # 수동 실행
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+      # ✅ 메인 리포 checkout (필요 시)
       - name: Checkout main repo
         uses: actions/checkout@v4
 
+      # ✅ Wiki 저장소 checkout
       - name: Checkout wiki repo
         uses: actions/checkout@v4
         with:
           repository: GiveSeo/TestWiki_2.wiki
           path: wiki
 
-      - name: Install pandoc and LaTeX
+      # ✅ Pandoc + XeLaTeX + 한글 폰트 설치
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y pandoc texlive texlive-xetex texlive-fonts-recommended texlive-lang-korean
+          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended \
+            texlive-lang-korean fonts-unfonts-core
 
-      - name: Combine all Markdown files
+      # ✅ 모든 .md 파일 병합
+      - name: Merge all markdown files
         run: |
           cd wiki
-          ls -l
-          cat *.md > combined.md
+          echo "# TestWiki_2 Documentation" > combined.md
+          echo "" >> combined.md
+          find . -name "*.md" -type f -print0 | sort -z | xargs -0 cat >> combined.md
 
-      - name: Convert combined.md to PDF (with Korean font)
+      # ✅ PDF 변환 (한글 + 이미지 지원)
+      - name: Convert to PDF
         run: |
           cd wiki
-          pandoc combined.md -o wiki.pdf --pdf-engine=xelatex \
-            -V mainfont="NanumGothic" \
-            --resource-path=.:./images
+          pandoc combined.md -o wiki.pdf \
+            --pdf-engine=xelatex \
+            -V mainfont="UnBatang" \
+            -V geometry:margin=1in \
+            --resource-path=.:./images:./assets
 
+      # ✅ 결과 PDF 업로드
       - name: Upload PDF as artifact
         uses: actions/upload-artifact@v4
         with:
