@@ -1,34 +1,44 @@
-name: Generate Wiki PDF
+name: Convert Wiki to PDF
 
 on:
-  workflow_dispatch:
-    inputs:
-      filename:
-        description: 'Markdown file to convert (without .md)'
-        required: true
+  workflow_dispatch: # 수동 실행
   push:
-    paths:
-      - '*.md'
+    branches: [ main ]
 
 jobs:
-  convert:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Wiki
+      - name: Checkout main repo
         uses: actions/checkout@v4
 
-      - name: Install Pandoc and LaTeX
+      - name: Checkout wiki repo
+        uses: actions/checkout@v4
+        with:
+          repository: GiveSeo/TestWiki_2.wiki
+          path: wiki
+
+      - name: Install pandoc and LaTeX
         run: |
           sudo apt-get update
-          sudo apt-get install -y pandoc texlive-latex-base texlive-fonts-recommended texlive-fonts-extra texlive-latex-extra
+          sudo apt-get install -y pandoc texlive texlive-xetex texlive-fonts-recommended texlive-lang-korean
 
-      - name: Convert Markdown to PDF
+      - name: Combine all Markdown files
         run: |
-          pandoc "${{ github.event.inputs.filename }}.md" -o "${{ github.event.inputs.filename }}.pdf"
+          cd wiki
+          ls -l
+          cat *.md > combined.md
 
-      - name: Upload PDF artifact
+      - name: Convert combined.md to PDF (with Korean font)
+        run: |
+          cd wiki
+          pandoc combined.md -o wiki.pdf --pdf-engine=xelatex \
+            -V mainfont="NanumGothic" \
+            --resource-path=.:./images
+
+      - name: Upload PDF as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.event.inputs.filename }}.pdf
-          path: ${{ github.event.inputs.filename }}.pdf
+          name: wiki-pdf
+          path: wiki/wiki.pdf
