@@ -26,13 +26,13 @@ jobs:
           sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended \
             texlive-lang-korean fonts-unfonts-core
 
-      # ✅ 모든 .md 파일 병합
+      # ✅ 모든 .md 파일 병합 (combined.md 제외)
       - name: Merge all markdown files
         run: |
           cd wiki
           echo "# TestWiki_2 Documentation" > combined.md
           echo "" >> combined.md
-          find . -name "*.md" -type f -print0 | sort -z | xargs -0 cat >> combined.md
+          find . -name "*.md" ! -name "combined.md" -type f -print0 | sort -z | xargs -0 cat >> combined.md
 
       # ✅ PDF 변환 (한글 + 이미지 지원)
       - name: Convert to PDF
