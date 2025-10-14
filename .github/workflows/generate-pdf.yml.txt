@@ -1,0 +1,34 @@
+name: Generate Wiki PDF
+
+on:
+  workflow_dispatch:
+    inputs:
+      filename:
+        description: 'Markdown file to convert (without .md)'
+        required: true
+  push:
+    paths:
+      - '*.md'
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Wiki
+        uses: actions/checkout@v4
+
+      - name: Install Pandoc and LaTeX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc texlive-latex-base texlive-fonts-recommended texlive-fonts-extra texlive-latex-extra
+
+      - name: Convert Markdown to PDF
+        run: |
+          pandoc "${{ github.event.inputs.filename }}.md" -o "${{ github.event.inputs.filename }}.pdf"
+
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.filename }}.pdf
+          path: ${{ github.event.inputs.filename }}.pdf
