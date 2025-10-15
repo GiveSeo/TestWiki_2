@@ -130,7 +130,7 @@ jobs:
           else
             git commit -m "📄 Update Wiki PDF"
             echo "🚀 Pushing..."
-            git push origin HEAD
+            git push --force origin HEAD
             echo "✅ Push 완료!"
           fi
 
