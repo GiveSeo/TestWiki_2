@@ -1,11 +1,11 @@
-name: Generate PDF from Wiki
+name: Generate PDF from Wiki and Update Home Link
 
 on:
   schedule:
-    - cron: '0 9 * * *'  # 매일 오전 9시에 실행 (UTC 기준, 한국은 +9시간 → 오후 6시)
-  workflow_dispatch:       # 수동으로 실행 가능
+    - cron: '0 9 * * *'  # 매일 오전 9시 (UTC 0시 = 한국 오후 6시)
+  workflow_dispatch:       # 수동 실행
   push:
-    branches: [ main ]     # 메인 리포 수정 시에도 실행
+    branches: [ main ]     # 메인 브랜치 업데이트 시 실행
 
 jobs:
   build-pdf:
@@ -25,14 +25,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended texlive-fonts-extra fonts-unfonts-core
 
-      - name: Merge all wiki Markdown files
+      - name: Merge all Wiki Markdown files
         run: |
           cd wiki
           echo "# GiveSeo Wiki Documentation" > combined.md
           find . -name "*.md" ! -name "combined.md" ! -path "./.git/*" -print0 | sort -z | xargs -0 cat >> combined.md
           cd ..
 
-      - name: Generate PDF (with UnBatang font)
+      - name: Generate PDF (UnBatang font)
         run: |
           cd wiki
           pandoc combined.md \
@@ -47,11 +47,32 @@ jobs:
           name: wiki-pdf
           path: wiki/combined.pdf
 
-      - name: Commit PDF back to main repo
+      - name: Commit PDF to main repository
         run: |
           mv wiki/combined.pdf Wiki_전체.pdf
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add Wiki_전체.pdf
           git commit -m "📄 Update Wiki PDF from .wiki.git" || echo "No changes to commit"
+          git push
+
+      - name: Update Home.md in Wiki with PDF link
+        run: |
+          cd wiki
+          PDF_URL="https://github.com/GiveSeo/TestWiki_2/raw/main/Wiki_전체.pdf"
+          LINK_LINE="[📎 최신 Wiki PDF 다운로드](${PDF_URL})"
+          HOME_FILE="Home.md"
+
+          if grep -q "📎 최신 Wiki PDF 다운로드" "$HOME_FILE"; then
+            # 기존 링크 업데이트
+            sed -i "s|\\[📎 최신 Wiki PDF 다운로드\\](.*)|${LINK_LINE}|" "$HOME_FILE"
+          else
+            # 링크가 없으면 파일 맨 아래 추가
+            echo "" >> "$HOME_FILE"
+            echo "## 📘 PDF 다운로드" >> "$HOME_FILE"
+            echo "${LINK_LINE}" >> "$HOME_FILE"
+          fi
+
+          git add "$HOME_FILE"
+          git commit -m "🔗 Update PDF download link in Home.md" || echo "No changes to commit"
           git push
