@@ -1,4 +1,49 @@
-name: Generate PDF from Wiki and Update Home Link
+# 7️⃣ Home.md 업데이트 (Wiki 저장소)
+      - name: Update Home.md in Wiki with PDF link
+        run: |
+          cd wiki
+          
+          # PDF 링크 생성 (URL 인코딩된 버전과 일반 버전 모두 제공)
+          PDF_URL_RAW="https://github.com/GiveSeo/TestWiki_2/raw/master/Wiki_전체.pdf"
+          PDF_URL_BLOB="https://github.com/GiveSeo/TestWiki_2/blob/master/Wiki_전체.pdf"
+          
+          HOME_FILE="Home.md"
+          
+          echo "📝 생성할 링크들:"
+          echo "  - Raw: ${PDF_URL_RAW}"
+          echo "  - Blob: ${PDF_URL_BLOB}"
+          
+          # 기존 PDF 다운로드 섹션 제거
+          if grep -q "## 📘 PDF 다운로드" "$HOME_FILE"; then
+            echo "🔄 기존 PDF 섹션 제거"
+            # PDF 다운로드 섹션부터 다음 섹션 전까지 또는 파일 끝까지 제거
+            sed -i '/## 📘 PDF 다운로드/,/^## /{ /^## 📘 PDF 다운로드/d; /^## /!d; }' "$HOME_FILE"
+          fi
+          
+          # 새 PDF 다운로드 섹션 추가
+          echo "" >> "$HOME_FILE"
+          echo "## 📘 PDF 다운로드" >> "$HOME_FILE"
+          echo "" >> "$HOME_FILE"
+          echo "전체 Wiki를 PDF로 다운로드할 수 있습니다:" >> "$HOME_FILE"
+          echo "" >> "$HOME_FILE"
+          echo "- [📥 PDF 다운로드 (Raw)]($PDF_URL_RAW)" >> "$HOME_FILE"
+          echo "- [👁️ GitHub에서 보기]($PDF_URL_BLOB)" >> "$HOME_FILE"
+          
+          cat "$HOME_FILE"
+          
+          # Remote URL을 PAT으로 재설정
+          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/GiveSeo/TestWiki_2.wiki.git
+          
+          # Wiki 저장소에 push (master 브랜치)
+          git add "$HOME_FILE"
+          if git diff --staged --quiet; then
+            echo "📝 변경사항 없음"
+          else
+            git commit -m "🔗 Update PDF download link"
+            echo "🚀 Pushing to Wiki..."
+            git push origin HEAD:master
+            echo "✅ Wiki 업데이트 완료!"
+          finame: Generate PDF from Wiki and Update Home Link
 on:
   schedule:
     - cron: '0 9 * * *'
@@ -36,15 +81,28 @@ jobs:
             texlive-fonts-extra \
             fonts-unfonts-core
 
-      # 4️⃣ 모든 Markdown 병합
-      - name: Merge all Wiki Markdown files
+      # 4️⃣ 모든 Markdown 병합 및 이미지 처리
+      - name: Merge all Wiki Markdown files and process images
         run: |
           cd wiki
+          
           echo "# GiveSeo Wiki Documentation" > combined.md
           echo "" >> combined.md
-          find . -name "*.md" ! -name "combined.md" ! -path "./.git/*" -print0 | sort -z | xargs -0 cat >> combined.md
+          echo "---" >> combined.md
+          echo "" >> combined.md
+          
+          # 이미지 URL을 절대 경로로 변환 (GitHub raw URL)
+          # Wiki의 이미지는 보통 상대 경로로 되어 있음
+          find . -name "*.md" ! -name "combined.md" ! -path "./.git/*" -print0 | sort -z | while IFS= read -r -d '' file; do
+            echo "" >> combined.md
+            echo "---" >> combined.md
+            echo "" >> combined.md
+            
+            # 이미지 경로를 GitHub raw URL로 변환
+            sed 's|!\[\([^]]*\)\](\([^)]*\))|![\1](https://raw.githubusercontent.com/GiveSeo/TestWiki_2/master/\2)|g' "$file" >> combined.md
+          done
 
-      # 5️⃣ PDF 생성
+      # 5️⃣ PDF 생성 (최적화된 설정)
       - name: Generate PDF
         run: |
           cd wiki
@@ -53,13 +111,32 @@ jobs:
             -V mainfont="UnBatang" \
             -V sansfont="UnBatang" \
             -V monofont="UnBatang" \
-            -V fontsize=12pt \
-            -o combined.pdf
+            -V fontsize=11pt \
+            -V geometry:margin=2cm \
+            -V geometry:a4paper \
+            -V linestretch=1.3 \
+            -V urlcolor=blue \
+            -V linkcolor=blue \
+            --wrap=auto \
+            --highlight-style=tango \
+            --toc \
+            --toc-depth=3 \
+            -V block-headings \
+            -o combined.pdf \
+            || echo "⚠️ PDF 생성 중 일부 경고가 있을 수 있습니다"
 
       # 6️⃣ PDF를 메인 리포지토리에 커밋
       - name: Commit PDF to main repository
         run: |
           mv wiki/combined.pdf Wiki_전체.pdf
+          
+          # PDF 파일 확인
+          if [ ! -f "Wiki_전체.pdf" ]; then
+            echo "❌ PDF 파일이 생성되지 않았습니다!"
+            exit 1
+          fi
+          
+          echo "✅ PDF 파일 크기: $(du -h Wiki_전체.pdf)"
           
           # Git 설정
           git config user.name "github-actions[bot]"
@@ -70,8 +147,15 @@ jobs:
           
           # 커밋 및 푸시 (현재 브랜치로)
           git add Wiki_전체.pdf
-          git diff --staged --quiet || git commit -m "📄 Update Wiki PDF"
-          git push origin HEAD
+          
+          if git diff --staged --quiet; then
+            echo "📝 변경사항 없음"
+          else
+            git commit -m "📄 Update Wiki PDF"
+            echo "🚀 Pushing to repository..."
+            git push origin HEAD
+            echo "✅ Push 완료!"
+          fi
 
       # 7️⃣ Home.md 업데이트 (Wiki 저장소)
       - name: Update Home.md in Wiki with PDF link
