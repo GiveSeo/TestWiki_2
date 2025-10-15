@@ -56,7 +56,7 @@ jobs:
             librsvg2-bin \
             imagemagick
 
-      - name: Merge all Wiki Markdown files and process images
+      - name: Merge all Wiki Markdown files and download images
         run: |
           cd wiki
           
@@ -65,12 +65,38 @@ jobs:
           echo "---" >> combined.md
           echo "" >> combined.md
           
+          # 이미지 디렉토리 생성
+          mkdir -p downloaded_images
+          
+          # 모든 Markdown 파일 병합 및 이미지 URL 추출
           find . -name "*.md" ! -name "combined.md" ! -path "./.git/*" -print0 | sort -z | while IFS= read -r -d '' file; do
             echo "" >> combined.md
             echo "---" >> combined.md
             echo "" >> combined.md
-            sed 's|!\[\([^]]*\)\](\([^)]*\))|![\1](https://raw.githubusercontent.com/GiveSeo/TestWiki_2/master/\2)|g' "$file" >> combined.md
+            cat "$file" >> combined.md
           done
+          
+          # HTTP/HTTPS 이미지 URL 추출 및 다운로드
+          echo "📥 외부 이미지 다운로드 중..."
+          grep -oP '!\[.*?\]\(\K(https?://[^)]+)' combined.md | sort -u | while read -r url; do
+            filename=$(echo "$url" | md5sum | cut -d' ' -f1)
+            extension="${url##*.}"
+            # 확장자가 너무 길면 기본값 사용
+            if [ ${#extension} -gt 4 ]; then
+              extension="jpg"
+            fi
+            
+            echo "  다운로드: $url -> downloaded_images/${filename}.${extension}"
+            curl -L -s --max-time 10 "$url" -o "downloaded_images/${filename}.${extension}" || echo "    ⚠️ 다운로드 실패: $url"
+            
+            # Markdown에서 URL을 로컬 경로로 변경
+            if [ -f "downloaded_images/${filename}.${extension}" ]; then
+              sed -i "s|$url|downloaded_images/${filename}.${extension}|g" combined.md
+            fi
+          done
+          
+          echo "✅ Markdown 병합 및 이미지 다운로드 완료"
+          echo "📊 다운로드된 이미지 수: $(ls -1 downloaded_images 2>/dev/null | wc -l)"
 
       - name: Generate PDF
         run: |
@@ -96,10 +122,17 @@ jobs:
             --toc \
             --toc-depth=3 \
             -V block-headings \
-            -o combined.pdf \
-            || echo "⚠️ PDF 생성 중 일부 경고가 있을 수 있습니다"
+            -o combined.pdf 2>&1 | tee pandoc.log
           
-          echo "✅ PDF 생성 완료!"
+          if [ -f combined.pdf ]; then
+            echo "✅ PDF 생성 완료!"
+            echo "📊 PDF 크기: $(du -h combined.pdf)"
+          else
+            echo "❌ PDF 생성 실패!"
+            echo "⚠️ Pandoc 로그:"
+            cat pandoc.log
+            exit 1
+          fi
 
       - name: Commit PDF to main repository
         run: |
