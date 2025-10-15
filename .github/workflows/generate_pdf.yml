@@ -1,78 +1,60 @@
-name: Auto Generate Wiki PDF
+name: Wiki to PDF
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
-      - '.github/workflows/wiki-auto-pdf.yml'
-  repository_dispatch:
-    types: [wiki_updated]
-  schedule:
-    - cron: "0 21 * * *"  # 매일 새벽 6시(한국시간)에 자동 실행
+      - 'wiki/**' # wiki 폴더가 바뀔 때마다 실행
+  workflow_dispatch:
 
 jobs:
-  generate:
+  build-pdf:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout main repo
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Clone wiki repo
-        run: |
-          git clone https://github.com/${{ github.repository }}.wiki.git wiki
-
-      - name: Combine markdown files
-        run: |
-          cd wiki
-          rm -f combined.md
-          find . -type f -name "*.md" ! -name "combined.md" -print0 | sort -z | xargs -0 cat >> combined.md
-
-      - name: Install dependencies and fonts
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended texlive-lang-korean fonts-unfonts-core fonts-d2coding
+          sudo apt-get install -y pandoc texlive-xetex fonts-unfonts-core
 
-      - name: Generate PDF from combined markdown
+      - name: Combine all wiki files
+        working-directory: wiki
         run: |
-          cd wiki
+          rm -f combined.md
+          for file in *.md; do
+            echo "\n\n---\n\n" >> combined.md
+            cat "$file" >> combined.md
+          done
+
+      - name: Convert to PDF (UTF-8 + font fix)
+        working-directory: wiki
+        run: |
           pandoc combined.md \
-            -o output.pdf \
+            -o Wiki_All.pdf \
             --pdf-engine=xelatex \
             -V mainfont="UnBatang" \
-            -V monofont="D2Coding" \
-            -V geometry:margin=1in
+            -V geometry:margin=1in \
+            -V linkcolor=blue \
+            --resource-path=.
 
-      - name: Move PDF to main repo
+      - name: Add PDF link to Home.md
+        working-directory: wiki
         run: |
-          mv wiki/output.pdf wiki.pdf
-
-      - name: Commit and push PDF to main branch
-        run: |
-          git config --global user.email "actions@github.com"
-          git config --global user.name "GitHub Actions"
-          git add wiki.pdf
-          git commit -m "Auto update Wiki PDF [skip ci]" || echo "No changes to commit"
-          git push
-
-      - name: Update Wiki Home.md with latest link
-        run: |
-          cd wiki
-          PDF_LINK="https://github.com/${{ github.repository }}/blob/main/wiki.pdf"
-          if grep -q "Wiki PDF 다운로드" Home.md; then
-            sed -i "s#\[📘.*Wiki PDF 다운로드.*#\[📘 최신 Wiki PDF 다운로드\](${PDF_LINK})#" Home.md
+          if grep -q "Wiki_All.pdf" Home.md; then
+            echo "PDF link already exists in Home.md"
           else
-            echo -e "\n[📘 최신 Wiki PDF 다운로드](${PDF_LINK})" >> Home.md
+            echo -e "\n\n📄 **[Download Full Wiki as PDF](./Wiki_All.pdf)**" >> Home.md
           fi
-          git config --global user.email "actions@github.com"
-          git config --global user.name "GitHub Actions"
-          git add Home.md
-          git commit -m "Update Home.md with latest PDF link [skip ci]" || echo "No changes"
-          git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git" master
 
-      - name: Done
+      - name: Commit and push PDF & updated Home.md
         run: |
-          echo "✅ Wiki PDF generated and Wiki Home updated!"
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add wiki/Wiki_All.pdf wiki/Home.md
+          git commit -m "Auto update Wiki PDF"
+          git push
