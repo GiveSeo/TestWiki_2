@@ -1,68 +1,40 @@
-# 7️⃣ Home.md 업데이트 (Wiki 저장소)
-      - name: Update Home.md in Wiki with PDF link
-        if: ${{ github.event.inputs.update_wiki_link != 'false' }}
-        run: |
-          cd wiki
-          
-          # PDF 링크 생성 (URL 인코딩된 버전과 일반 버전 모두 제공)
-          PDF_URL_RAW="https://github.com/GiveSeo/TestWiki_2/raw/master/Wiki_전체.pdf"
-          PDF_URL_BLOB="https://github.com/GiveSeo/TestWiki_2/blob/master/Wiki_전체.pdf"
-          
-          HOME_FILE="Home.md"
-          
-          echo "📝 생성할 링크들:"
-          echo "  - Raw: ${PDF_URL_RAW}"
-          echo "  - Blob: ${PDF_URL_BLOB}"
-          
-          # 기존 PDF 다운로드 섹션 제거
-          if grep -q "## 📘 PDF 다운로드" "$HOME_FILE"; then
-            echo "🔄 기존 PDF 섹션 제거"
-            # PDF 다운로드 섹션부터 다음 섹션 전까지 또는 파일 끝까지 제거
-            sed -i '/## 📘 PDF 다운로드/,/^## /{ /^## 📘 PDF 다운로드/d; /^## /!d; }' "$HOME_FILE"
-          fi
-          
-          # 새 PDF 다운로드 섹션 추가
-          echo "" >> "$HOME_FILE"
-          echo "## 📘 PDF 다운로드" >> "$HOME_FILE"
-          echo "" >> "$HOME_FILE"
-          echo "전체 Wiki를 PDF로 다운로드할 수 있습니다:" >> "$HOME_FILE"
-          echo "" >> "$HOME_FILE"
-          echo "- [📥 PDF 다운로드 (Raw)]($PDF_URL_RAW)" >> "$HOME_FILE"
-          echo "- [👁️ GitHub에서 보기]($PDF_URL_BLOB)" >> "$HOME_FILE"
-          
-          cat "$HOME_FILE"
-          
-          # Remote URL을 PAT으로 재설정
-          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/GiveSeo/TestWiki_2.wiki.git
-          
-          # Wiki 저장소에 push (master 브랜치)
-          git add "$HOME_FILE"
-          if git diff --staged --quiet; then
-            echo "📝 변경사항 없음"
-          else
-            git commit -m "🔗 Update PDF download link"
-            echo "🚀 Pushing to Wiki..."
-            git push origin HEAD:master
-            echo "✅ Wiki 업데이트 완료!"
-          finame: Generate PDF from Wiki and Update Home Link
+name: Generate PDF from Wiki and Update Home Link
+
 on:
   schedule:
     - cron: '0 9 * * *'
   workflow_dispatch:
+    inputs:
+      update_wiki_link:
+        description: 'Wiki Home.md에 PDF 링크 업데이트'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      pdf_font_size:
+        description: 'PDF 폰트 크기 (pt)'
+        required: false
+        default: '11'
+        type: choice
+        options:
+          - '10'
+          - '11'
+          - '12'
   push:
-    branches: [ main ]
+    branches:
+      - master
 
 jobs:
   build-pdf:
     runs-on: ubuntu-latest
     steps:
-      # 1️⃣ 메인 리포지토리 checkout
       - name: Checkout main repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GH_PAT }}  # PAT 사용
+          token: ${{ secrets.GH_PAT }}
 
-      # 2️⃣ Wiki clone (PAT 포함)
       - name: Clone Wiki repository with PAT
         run: |
           git clone https://${{ secrets.GH_PAT }}@github.com/GiveSeo/TestWiki_2.wiki.git wiki
@@ -71,7 +43,6 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           cd ..
 
-      # 3️⃣ 의존성 설치
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -80,9 +51,11 @@ jobs:
             texlive-xetex \
             texlive-fonts-recommended \
             texlive-fonts-extra \
-            fonts-unfonts-core
+            texlive-lang-cjk \
+            fonts-unfonts-core \
+            librsvg2-bin \
+            imagemagick
 
-      # 4️⃣ 모든 Markdown 병합 및 이미지 처리
       - name: Merge all Wiki Markdown files and process images
         run: |
           cd wiki
@@ -92,23 +65,17 @@ jobs:
           echo "---" >> combined.md
           echo "" >> combined.md
           
-          # 이미지 URL을 절대 경로로 변환 (GitHub raw URL)
-          # Wiki의 이미지는 보통 상대 경로로 되어 있음
           find . -name "*.md" ! -name "combined.md" ! -path "./.git/*" -print0 | sort -z | while IFS= read -r -d '' file; do
             echo "" >> combined.md
             echo "---" >> combined.md
             echo "" >> combined.md
-            
-            # 이미지 경로를 GitHub raw URL로 변환
             sed 's|!\[\([^]]*\)\](\([^)]*\))|![\1](https://raw.githubusercontent.com/GiveSeo/TestWiki_2/master/\2)|g' "$file" >> combined.md
           done
 
-      # 5️⃣ PDF 생성 (최적화된 설정)
       - name: Generate PDF
         run: |
           cd wiki
           
-          # 수동 실행 시 입력값 사용, 아니면 기본값
           FONT_SIZE="${{ github.event.inputs.pdf_font_size || '11' }}"
           
           echo "📄 PDF 생성 중... (폰트 크기: ${FONT_SIZE}pt)"
@@ -134,12 +101,10 @@ jobs:
           
           echo "✅ PDF 생성 완료!"
 
-      # 6️⃣ PDF를 메인 리포지토리에 커밋
       - name: Commit PDF to main repository
         run: |
           mv wiki/combined.pdf Wiki_전체.pdf
           
-          # PDF 파일 확인
           if [ ! -f "Wiki_전체.pdf" ]; then
             echo "❌ PDF 파일이 생성되지 않았습니다!"
             exit 1
@@ -147,14 +112,11 @@ jobs:
           
           echo "✅ PDF 파일 크기: $(du -h Wiki_전체.pdf)"
           
-          # Git 설정
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Remote URL을 PAT으로 재설정
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/GiveSeo/TestWiki_2.git
           
-          # 커밋 및 푸시 (현재 브랜치로)
           git add Wiki_전체.pdf
           
           if git diff --staged --quiet; then
@@ -166,33 +128,47 @@ jobs:
             echo "✅ Push 완료!"
           fi
 
-      # 7️⃣ Home.md 업데이트 (Wiki 저장소)
       - name: Update Home.md in Wiki with PDF link
+        if: ${{ github.event.inputs.update_wiki_link != 'false' }}
         run: |
           cd wiki
           
-          PDF_URL="https://github.com/GiveSeo/TestWiki_2/raw/main/Wiki_전체.pdf"
-          LINK_LINE="[📎 최신 Wiki PDF 다운로드](${PDF_URL})"
+          PDF_URL_RAW="https://github.com/GiveSeo/TestWiki_2/raw/master/Wiki_전체.pdf"
+          PDF_URL_BLOB="https://github.com/GiveSeo/TestWiki_2/blob/master/Wiki_전체.pdf"
+          
           HOME_FILE="Home.md"
           
-          # 기존 링크 확인 및 업데이트
-          if grep -q "📎 최신 Wiki PDF 다운로드" "$HOME_FILE"; then
-            sed -i "s|\\[📎 최신 Wiki PDF 다운로드\\](.*)|${LINK_LINE}|" "$HOME_FILE"
-          else
-            echo "" >> "$HOME_FILE"
-            echo "## 📘 PDF 다운로드" >> "$HOME_FILE"
-            echo "${LINK_LINE}" >> "$HOME_FILE"
+          echo "📝 생성할 링크들:"
+          echo "  - Raw: ${PDF_URL_RAW}"
+          echo "  - Blob: ${PDF_URL_BLOB}"
+          
+          if grep -q "## 📘 PDF 다운로드" "$HOME_FILE"; then
+            echo "🔄 기존 PDF 섹션 제거"
+            sed -i '/## 📘 PDF 다운로드/,/^## /{ /^## 📘 PDF 다운로드/d; /^## /!d; }' "$HOME_FILE"
           fi
           
-          # Remote URL을 PAT으로 재설정 (Wiki는 이미 clone 시 PAT 포함)
+          echo "" >> "$HOME_FILE"
+          echo "## 📘 PDF 다운로드" >> "$HOME_FILE"
+          echo "" >> "$HOME_FILE"
+          echo "전체 Wiki를 PDF로 다운로드할 수 있습니다:" >> "$HOME_FILE"
+          echo "" >> "$HOME_FILE"
+          echo "- [📥 PDF 다운로드 (Raw)]($PDF_URL_RAW)" >> "$HOME_FILE"
+          echo "- [👁️ GitHub에서 보기]($PDF_URL_BLOB)" >> "$HOME_FILE"
+          
+          cat "$HOME_FILE"
+          
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/GiveSeo/TestWiki_2.wiki.git
           
-          # Wiki 저장소에 push (master 브랜치)
           git add "$HOME_FILE"
-          git diff --staged --quiet || git commit -m "🔗 Update PDF download link"
-          git push origin HEAD:master
+          if git diff --staged --quiet; then
+            echo "📝 변경사항 없음"
+          else
+            git commit -m "🔗 Update PDF download link"
+            echo "🚀 Pushing to Wiki..."
+            git push origin HEAD:master
+            echo "✅ Wiki 업데이트 완료!"
+          fi
 
-      # 8️⃣ 아티팩트 업로드 (선택사항)
       - name: Upload PDF as artifact
         uses: actions/upload-artifact@v4
         with:
