@@ -2,8 +2,8 @@ name: Generate PDF from Wiki and Update Home Link
 
 on:
   schedule:
-    - cron: '0 9 * * *'  # 매일 오전 9시 (UTC 0시 = 한국 오후 6시)
-  workflow_dispatch:       # 수동 실행
+    - cron: '0 9 * * *'  # 매일 오전 9시 (UTC 기준, 한국 오후 6시)
+  workflow_dispatch:       # 수동 실행 가능
   push:
     branches: [ main ]     # 메인 브랜치 업데이트 시 실행
 
@@ -23,7 +23,13 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended texlive-fonts-extra fonts-unfonts-core
+          sudo apt-get install -y \
+            pandoc \
+            texlive-xetex \
+            texlive-fonts-recommended \
+            texlive-fonts-extra \
+            fonts-unfonts-core
+          fc-list :lang=ko || echo "No Korean fonts found"
 
       - name: Merge all Wiki Markdown files
         run: |
@@ -32,12 +38,15 @@ jobs:
           find . -name "*.md" ! -name "combined.md" ! -path "./.git/*" -print0 | sort -z | xargs -0 cat >> combined.md
           cd ..
 
-      - name: Generate PDF (UnBatang font)
+      - name: Generate PDF (UnBatang for all fonts, including code)
         run: |
           cd wiki
           pandoc combined.md \
             --pdf-engine=xelatex \
             -V mainfont="UnBatang" \
+            -V sansfont="UnBatang" \
+            -V monofont="UnBatang" \
+            -V fontsize=12pt \
             -o combined.pdf
           cd ..
 
