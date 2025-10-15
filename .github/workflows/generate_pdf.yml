@@ -1,60 +1,58 @@
-name: Wiki to PDF
+name: Sync Markdown to Wiki
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
-      - 'wiki/**' # wiki 폴더가 바뀔 때마다 실행
-  workflow_dispatch:
+      - "docs/**/*.md"   # ✅ docs 폴더 안의 md 수정 시 작동 (필요에 따라 수정 가능)
+      - "README.md"
 
 jobs:
-  build-pdf:
+  sync-wiki:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout main repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Install dependencies
+      - name: Set up Git user
         run: |
-          sudo apt-get update
-          sudo apt-get install -y pandoc texlive-xetex fonts-unfonts-core
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
 
-      - name: Combine all wiki files
-        working-directory: wiki
+      - name: Clone wiki repo
         run: |
-          rm -f combined.md
-          for file in *.md; do
-            echo "\n\n---\n\n" >> combined.md
-            cat "$file" >> combined.md
+          git clone "https://github.com/${{ github.repository }}.wiki.git" wiki
+
+      - name: Copy markdown files to wiki
+        run: |
+          mkdir -p wiki/docs
+          cp -r docs/*.md wiki/docs/ || true
+          cp README.md wiki/ || true
+
+      - name: Add download links to Wiki Home.md
+        run: |
+          HOME_FILE="wiki/Home.md"
+          echo "## 📦 Downloads" > temp_home.md
+          for f in $(ls wiki/docs/*.md 2>/dev/null); do
+            fname=$(basename "$f")
+            echo "- [${fname%.*}](docs/$fname)" >> temp_home.md
           done
+          echo "" >> temp_home.md
+          echo "---" >> temp_home.md
+          cat "$HOME_FILE" >> temp_home.md || true
+          mv temp_home.md "$HOME_FILE"
 
-      - name: Convert to PDF (UTF-8 + font fix)
-        working-directory: wiki
+      - name: Commit & Push to Wiki
         run: |
-          pandoc combined.md \
-            -o Wiki_All.pdf \
-            --pdf-engine=xelatex \
-            -V mainfont="UnBatang" \
-            -V geometry:margin=1in \
-            -V linkcolor=blue \
-            --resource-path=.
-
-      - name: Add PDF link to Home.md
-        working-directory: wiki
-        run: |
-          if grep -q "Wiki_All.pdf" Home.md; then
-            echo "PDF link already exists in Home.md"
+          cd wiki
+          git add .
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
           else
-            echo -e "\n\n📄 **[Download Full Wiki as PDF](./Wiki_All.pdf)**" >> Home.md
+            git commit -m "🔄 Sync Wiki from main repo"
+            git push "https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git" HEAD:master
           fi
-
-      - name: Commit and push PDF & updated Home.md
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add wiki/Wiki_All.pdf wiki/Home.md
-          git commit -m "Auto update Wiki PDF"
-          git push
