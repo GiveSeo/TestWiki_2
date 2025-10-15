@@ -1,39 +1,42 @@
-name: Generate Wiki PDF
+name: Auto Generate Wiki PDF
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'wiki/**'
-      - '.github/workflows/wiki-pdf.yml'
+      - '.github/workflows/wiki-auto-pdf.yml'
+  repository_dispatch:
+    types: [wiki_updated]
+  schedule:
+    - cron: "0 21 * * *"  # 매일 새벽 6시(한국시간)에 자동 실행
 
 jobs:
-  build:
+  generate:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout main repository
+      - name: Checkout main repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Checkout Wiki repository
+      - name: Clone wiki repo
         run: |
           git clone https://github.com/${{ github.repository }}.wiki.git wiki
 
-      - name: Combine all Markdown files
+      - name: Combine markdown files
         run: |
           cd wiki
           rm -f combined.md
           find . -type f -name "*.md" ! -name "combined.md" -print0 | sort -z | xargs -0 cat >> combined.md
 
-      - name: Install dependencies and Korean fonts
+      - name: Install dependencies and fonts
         run: |
           sudo apt-get update
           sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended texlive-lang-korean fonts-unfonts-core fonts-d2coding
 
-      - name: Generate PDF
+      - name: Generate PDF from combined markdown
         run: |
           cd wiki
           pandoc combined.md \
@@ -47,7 +50,7 @@ jobs:
         run: |
           mv wiki/output.pdf wiki.pdf
 
-      - name: Commit and push generated PDF to main branch
+      - name: Commit and push PDF to main branch
         run: |
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
@@ -55,6 +58,21 @@ jobs:
           git commit -m "Auto update Wiki PDF [skip ci]" || echo "No changes to commit"
           git push
 
-      - name: Print final link
+      - name: Update Wiki Home.md with latest link
         run: |
-          echo "✅ Wiki PDF generated: https://github.com/${{ github.repository }}/blob/main/wiki.pdf"
+          cd wiki
+          PDF_LINK="https://github.com/${{ github.repository }}/blob/main/wiki.pdf"
+          if grep -q "Wiki PDF 다운로드" Home.md; then
+            sed -i "s#\[📘.*Wiki PDF 다운로드.*#\[📘 최신 Wiki PDF 다운로드\](${PDF_LINK})#" Home.md
+          else
+            echo -e "\n[📘 최신 Wiki PDF 다운로드](${PDF_LINK})" >> Home.md
+          fi
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add Home.md
+          git commit -m "Update Home.md with latest PDF link [skip ci]" || echo "No changes"
+          git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git" master
+
+      - name: Done
+        run: |
+          echo "✅ Wiki PDF generated and Wiki Home updated!"
