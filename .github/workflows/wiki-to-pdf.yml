@@ -68,10 +68,10 @@ jobs:
           # Remote URL을 PAT으로 재설정
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/GiveSeo/TestWiki_2.git
           
-          # 커밋 및 푸시
+          # 커밋 및 푸시 (현재 브랜치로)
           git add Wiki_전체.pdf
           git diff --staged --quiet || git commit -m "📄 Update Wiki PDF"
-          git push origin main
+          git push origin HEAD
 
       # 7️⃣ Home.md 업데이트 (Wiki 저장소)
       - name: Update Home.md in Wiki with PDF link
