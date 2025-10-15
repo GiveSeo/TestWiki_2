@@ -12,14 +12,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ 메인 리포지토리 checkout
       - name: Checkout main repository
         uses: actions/checkout@v4
 
+      # 2️⃣ Wiki clone
       - name: Clone Wiki repository
         run: |
           git clone https://github.com/GiveSeo/TestWiki_2.wiki.git wiki
           ls wiki
 
+      # 3️⃣ 의존성 설치
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -31,6 +34,7 @@ jobs:
             fonts-unfonts-core
           fc-list :lang=ko || echo "No Korean fonts found"
 
+      # 4️⃣ 모든 Markdown 병합
       - name: Merge all Wiki Markdown files
         run: |
           cd wiki
@@ -38,6 +42,7 @@ jobs:
           find . -name "*.md" ! -name "combined.md" ! -path "./.git/*" -print0 | sort -z | xargs -0 cat >> combined.md
           cd ..
 
+      # 5️⃣ PDF 생성 (UnBatang: 본문+코드+제목)
       - name: Generate PDF (UnBatang for all fonts, including code)
         run: |
           cd wiki
@@ -50,12 +55,14 @@ jobs:
             -o combined.pdf
           cd ..
 
+      # 6️⃣ 아티팩트 업로드 (옵션)
       - name: Upload PDF as artifact
         uses: actions/upload-artifact@v4
         with:
           name: wiki-pdf
           path: wiki/combined.pdf
 
+      # 7️⃣ PDF를 메인 리포지토리에 커밋 (PAT 사용)
       - name: Commit PDF to main repository using PAT
         run: |
           mv wiki/combined.pdf Wiki_전체.pdf
@@ -65,6 +72,7 @@ jobs:
           git commit -m "📄 Update Wiki PDF from .wiki.git" || echo "No changes to commit"
           git push https://${{ secrets.GH_PAT }}@github.com/GiveSeo/TestWiki_2.git HEAD:main
 
+      # 8️⃣ Home.md에 최신 PDF 링크 업데이트 (PAT 사용)
       - name: Update Home.md in Wiki with PDF link using PAT
         run: |
           cd wiki
