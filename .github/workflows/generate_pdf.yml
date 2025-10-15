@@ -1,52 +1,60 @@
-name: Convert Wiki to PDF
+name: Generate Wiki PDF
 
 on:
-  workflow_dispatch:  # 수동 실행
+  push:
+    branches:
+      - main
+    paths:
+      - 'wiki/**'
+      - '.github/workflows/wiki-pdf.yml'
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # ✅ 메인 리포 checkout (필요 시)
-      - name: Checkout main repo
-        uses: actions/checkout@v4
-
-      # ✅ Wiki 저장소 checkout
-      - name: Checkout wiki repo
+      - name: Checkout main repository
         uses: actions/checkout@v4
         with:
-          repository: GiveSeo/TestWiki_2.wiki
-          path: wiki
+          fetch-depth: 0
 
-      # ✅ Pandoc + XeLaTeX + 한글 폰트 설치
-      - name: Install dependencies
+      - name: Checkout Wiki repository
+        run: |
+          git clone https://github.com/${{ github.repository }}.wiki.git wiki
+
+      - name: Combine all Markdown files
+        run: |
+          cd wiki
+          rm -f combined.md
+          find . -type f -name "*.md" ! -name "combined.md" -print0 | sort -z | xargs -0 cat >> combined.md
+
+      - name: Install dependencies and Korean fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended \
-            texlive-lang-korean fonts-unfonts-core
+          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended texlive-lang-korean fonts-unfonts-core fonts-d2coding
 
-      # ✅ 모든 .md 파일 병합 (combined.md 제외)
-      - name: Merge all markdown files
+      - name: Generate PDF
         run: |
           cd wiki
-          echo "# TestWiki_2 Documentation" > combined.md
-          echo "" >> combined.md
-          find . -name "*.md" ! -name "combined.md" -type f -print0 | sort -z | xargs -0 cat >> combined.md
-
-      # ✅ PDF 변환 (한글 + 이미지 지원)
-      - name: Convert to PDF
-        run: |
-          cd wiki
-          pandoc combined.md -o wiki.pdf \
+          pandoc combined.md \
+            -o output.pdf \
             --pdf-engine=xelatex \
             -V mainfont="UnBatang" \
-            -V geometry:margin=1in \
-            --resource-path=.:./images:./assets
+            -V monofont="D2Coding" \
+            -V geometry:margin=1in
 
-      # ✅ 결과 PDF 업로드
-      - name: Upload PDF as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: wiki-pdf
-          path: wiki/wiki.pdf
+      - name: Move PDF to main repo
+        run: |
+          mv wiki/output.pdf wiki.pdf
+
+      - name: Commit and push generated PDF to main branch
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add wiki.pdf
+          git commit -m "Auto update Wiki PDF [skip ci]" || echo "No changes to commit"
+          git push
+
+      - name: Print final link
+        run: |
+          echo "✅ Wiki PDF generated: https://github.com/${{ github.repository }}/blob/main/wiki.pdf"
