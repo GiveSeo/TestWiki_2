@@ -150,6 +150,16 @@ jobs:
           
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/GiveSeo/TestWiki_2.git
           
+          # 원격 변경사항 가져오기
+          echo "🔄 원격 저장소 동기화..."
+          git fetch origin
+          git pull origin HEAD --rebase || {
+            echo "⚠️ Rebase 충돌 발생, PDF 파일 우선 적용"
+            git checkout --ours Wiki_전체.pdf 2>/dev/null || true
+            git add Wiki_전체.pdf
+            git rebase --continue || true
+          }
+          
           git add Wiki_전체.pdf
           
           if git diff --staged --quiet; then
